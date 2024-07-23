@@ -1,0 +1,360 @@
+package main
+
+import (
+	"bufio"
+	"encoding/hex"
+	"fmt"
+	"os"
+)
+
+const BLOCK_SIZE = 16 // длина блока
+
+// таблица прямого нелинейного преобразования
+var Pi = [...]byte{
+	0xFC, 0xEE, 0xDD, 0x11, 0xCF, 0x6E, 0x31, 0x16,
+	0xFB, 0xC4, 0xFA, 0xDA, 0x23, 0xC5, 0x04, 0x4D,
+	0xE9, 0x77, 0xF0, 0xDB, 0x93, 0x2E, 0x99, 0xBA,
+	0x17, 0x36, 0xF1, 0xBB, 0x14, 0xCD, 0x5F, 0xC1,
+	0xF9, 0x18, 0x65, 0x5A, 0xE2, 0x5C, 0xEF, 0x21,
+	0x81, 0x1C, 0x3C, 0x42, 0x8B, 0x01, 0x8E, 0x4F,
+	0x05, 0x84, 0x02, 0xAE, 0xE3, 0x6A, 0x8F, 0xA0,
+	0x06, 0x0B, 0xED, 0x98, 0x7F, 0xD4, 0xD3, 0x1F,
+	0xEB, 0x34, 0x2C, 0x51, 0xEA, 0xC8, 0x48, 0xAB,
+	0xF2, 0x2A, 0x68, 0xA2, 0xFD, 0x3A, 0xCE, 0xCC,
+	0xB5, 0x70, 0x0E, 0x56, 0x08, 0x0C, 0x76, 0x12,
+	0xBF, 0x72, 0x13, 0x47, 0x9C, 0xB7, 0x5D, 0x87,
+	0x15, 0xA1, 0x96, 0x29, 0x10, 0x7B, 0x9A, 0xC7,
+	0xF3, 0x91, 0x78, 0x6F, 0x9D, 0x9E, 0xB2, 0xB1,
+	0x32, 0x75, 0x19, 0x3D, 0xFF, 0x35, 0x8A, 0x7E,
+	0x6D, 0x54, 0xC6, 0x80, 0xC3, 0xBD, 0x0D, 0x57,
+	0xDF, 0xF5, 0x24, 0xA9, 0x3E, 0xA8, 0x43, 0xC9,
+	0xD7, 0x79, 0xD6, 0xF6, 0x7C, 0x22, 0xB9, 0x03,
+	0xE0, 0x0F, 0xEC, 0xDE, 0x7A, 0x94, 0xB0, 0xBC,
+	0xDC, 0xE8, 0x28, 0x50, 0x4E, 0x33, 0x0A, 0x4A,
+	0xA7, 0x97, 0x60, 0x73, 0x1E, 0x00, 0x62, 0x44,
+	0x1A, 0xB8, 0x38, 0x82, 0x64, 0x9F, 0x26, 0x41,
+	0xAD, 0x45, 0x46, 0x92, 0x27, 0x5E, 0x55, 0x2F,
+	0x8C, 0xA3, 0xA5, 0x7D, 0x69, 0xD5, 0x95, 0x3B,
+	0x07, 0x58, 0xB3, 0x40, 0x86, 0xAC, 0x1D, 0xF7,
+	0x30, 0x37, 0x6B, 0xE4, 0x88, 0xD9, 0xE7, 0x89,
+	0xE1, 0x1B, 0x83, 0x49, 0x4C, 0x3F, 0xF8, 0xFE,
+	0x8D, 0x53, 0xAA, 0x90, 0xCA, 0xD8, 0x85, 0x61,
+	0x20, 0x71, 0x67, 0xA4, 0x2D, 0x2B, 0x09, 0x5B,
+	0xCB, 0x9B, 0x25, 0xD0, 0xBE, 0xE5, 0x6C, 0x52,
+	0x59, 0xA6, 0x74, 0xD2, 0xE6, 0xF4, 0xB4, 0xC0,
+	0xD1, 0x66, 0xAF, 0xC2, 0x39, 0x4B, 0x63, 0xB6}
+
+// таблица обратного нелинейного преобразования
+var reverse_Pi = [...]byte{
+	0xA5, 0x2D, 0x32, 0x8F, 0x0E, 0x30, 0x38, 0xC0,
+	0x54, 0xE6, 0x9E, 0x39, 0x55, 0x7E, 0x52, 0x91,
+	0x64, 0x03, 0x57, 0x5A, 0x1C, 0x60, 0x07, 0x18,
+	0x21, 0x72, 0xA8, 0xD1, 0x29, 0xC6, 0xA4, 0x3F,
+	0xE0, 0x27, 0x8D, 0x0C, 0x82, 0xEA, 0xAE, 0xB4,
+	0x9A, 0x63, 0x49, 0xE5, 0x42, 0xE4, 0x15, 0xB7,
+	0xC8, 0x06, 0x70, 0x9D, 0x41, 0x75, 0x19, 0xC9,
+	0xAA, 0xFC, 0x4D, 0xBF, 0x2A, 0x73, 0x84, 0xD5,
+	0xC3, 0xAF, 0x2B, 0x86, 0xA7, 0xB1, 0xB2, 0x5B,
+	0x46, 0xD3, 0x9F, 0xFD, 0xD4, 0x0F, 0x9C, 0x2F,
+	0x9B, 0x43, 0xEF, 0xD9, 0x79, 0xB6, 0x53, 0x7F,
+	0xC1, 0xF0, 0x23, 0xE7, 0x25, 0x5E, 0xB5, 0x1E,
+	0xA2, 0xDF, 0xA6, 0xFE, 0xAC, 0x22, 0xF9, 0xE2,
+	0x4A, 0xBC, 0x35, 0xCA, 0xEE, 0x78, 0x05, 0x6B,
+	0x51, 0xE1, 0x59, 0xA3, 0xF2, 0x71, 0x56, 0x11,
+	0x6A, 0x89, 0x94, 0x65, 0x8C, 0xBB, 0x77, 0x3C,
+	0x7B, 0x28, 0xAB, 0xD2, 0x31, 0xDE, 0xC4, 0x5F,
+	0xCC, 0xCF, 0x76, 0x2C, 0xB8, 0xD8, 0x2E, 0x36,
+	0xDB, 0x69, 0xB3, 0x14, 0x95, 0xBE, 0x62, 0xA1,
+	0x3B, 0x16, 0x66, 0xE9, 0x5C, 0x6C, 0x6D, 0xAD,
+	0x37, 0x61, 0x4B, 0xB9, 0xE3, 0xBA, 0xF1, 0xA0,
+	0x85, 0x83, 0xDA, 0x47, 0xC5, 0xB0, 0x33, 0xFA,
+	0x96, 0x6F, 0x6E, 0xC2, 0xF6, 0x50, 0xFF, 0x5D,
+	0xA9, 0x8E, 0x17, 0x1B, 0x97, 0x7D, 0xEC, 0x58,
+	0xF7, 0x1F, 0xFB, 0x7C, 0x09, 0x0D, 0x7A, 0x67,
+	0x45, 0x87, 0xDC, 0xE8, 0x4F, 0x1D, 0x4E, 0x04,
+	0xEB, 0xF8, 0xF3, 0x3E, 0x3D, 0xBD, 0x8A, 0x88,
+	0xDD, 0xCD, 0x0B, 0x13, 0x98, 0x02, 0x93, 0x80,
+	0x90, 0xD0, 0x24, 0x34, 0xCB, 0xED, 0xF4, 0xCE,
+	0x99, 0x10, 0x44, 0x40, 0x92, 0x3A, 0x01, 0x26,
+	0x12, 0x1A, 0x48, 0x68, 0xF5, 0x81, 0x8B, 0xC7,
+	0xD6, 0x20, 0x0A, 0x08, 0x00, 0x4C, 0xD7, 0x74}
+
+// вектор линейного преобразования
+var l_vec = [...]byte{
+	1, 148, 32, 133, 16, 194, 192, 1,
+	251, 1, 192, 194, 16, 133, 32, 148}
+
+// массив для хранения констант
+var iter_C = make([][]byte, 32)
+
+// массив для хранения ключей
+var iter_key = make([][]byte, 10)
+
+// функция определения 2х мерного массива для констант и ключей
+func ident_const_key() {
+	for i := 0; i < 32; i++ {
+		iter_C[i] = make([]byte, 16)
+	}
+	for i := 0; i < 10; i++ {
+		iter_key[i] = make([]byte, 64)
+	}
+}
+
+// функция X
+func GOST_Kuz_X(a []byte, b []byte) []byte {
+	c := make([]byte, len(a))
+	for i := 0; i < BLOCK_SIZE; i++ {
+		c[i] = a[i] ^ b[i]
+	}
+	return c
+}
+
+// Функция S
+func GOST_Kuz_S(in_data []byte) []byte {
+	out_data := make([]byte, len(in_data))
+	for i := 0; i < BLOCK_SIZE; i++ {
+		data := int(in_data[i])
+		if data < 0 {
+			data += 256
+		}
+		out_data[i] = Pi[data]
+	}
+	return out_data
+}
+
+// умножение в поле Галуа
+func GOST_Kuz_GF_mul(a, b byte) byte {
+	var c byte
+	var hi_bit byte
+
+	for i := 0; i < 8; i++ {
+		if (b & 1) == 1 {
+			c ^= a
+		}
+		hi_bit = a & 0x80
+		a <<= 1
+		if hi_bit != 0 {
+			a ^= 0xc3 // Полином x^8 + x^7 + x^6 + x + 1
+		}
+		b >>= 1
+	}
+	return c
+}
+
+// функция R сдвигает данные и реализует уравнение, представленное для расчета L-функции
+func GOST_Kuz_R(state []byte) []byte {
+	var a_15 byte
+	internal := make([]byte, 16)
+
+	for i := 15; i >= 0; i-- {
+		if i == 0 {
+			internal[15] = state[i]
+		} else {
+			internal[i-1] = state[i]
+		}
+		a_15 ^= GOST_Kuz_GF_mul(state[i], l_vec[i])
+	}
+
+	internal[15] = a_15
+	return internal
+}
+
+func GOST_Kuz_L(in_data []byte) []byte {
+	out_data := make([]byte, len(in_data))
+	internal := in_data
+	for i := 0; i < 16; i++ {
+		internal = GOST_Kuz_R(internal)
+	}
+	out_data = internal
+	return out_data
+}
+
+// функция S^(-1)
+func GOST_Kuz_reverse_S(in_data []byte) []byte {
+	out_data := make([]byte, len(in_data))
+	for i := 0; i < BLOCK_SIZE; i++ {
+		data := int(in_data[i])
+		if data < 0 {
+			data += 256
+		}
+		out_data[i] = reverse_Pi[data]
+	}
+	return out_data
+}
+
+func GOST_Kuz_reverse_R(state []byte) []byte {
+	a_0 := state[15]
+	internal := make([]byte, 16)
+	for i := 1; i < 16; i++ {
+		internal[i] = state[i-1]
+		a_0 ^= GOST_Kuz_GF_mul(internal[i], l_vec[i])
+	}
+	internal[0] = a_0
+	return internal
+}
+
+func GOST_Kuz_reverse_L(in_data []byte) []byte {
+	out_data := make([]byte, len(in_data))
+	internal := in_data
+	for i := 0; i < 16; i++ {
+		internal = GOST_Kuz_reverse_R(internal)
+	}
+	out_data = internal
+	return out_data
+}
+
+// функция расчета констант
+func GOST_Kuz_Get_C() {
+	iter_num := make([][]byte, 32)
+	for i := 0; i < 32; i++ {
+		iter_num[i] = make([]byte, 16)
+	}
+	for i := 0; i < 32; i++ {
+		for j := 0; j < BLOCK_SIZE; j++ {
+			iter_num[i][j] = 0
+		}
+		iter_num[i][0] = byte(i + 1)
+	}
+	for i := 0; i < 32; i++ {
+		iter_C[i] = GOST_Kuz_L(iter_num[i])
+	}
+}
+
+// функция, выполняющая преобразования ячейки Фейстеля
+func GOST_Kuz_F(in_key_1 []byte, in_key_2 []byte, iter_const []byte) [][]byte {
+	out_key_2 := in_key_1
+	internal := GOST_Kuz_X(in_key_1, iter_const)
+	internal = GOST_Kuz_S(internal)
+	internal = GOST_Kuz_L(internal)
+	out_key_1 := GOST_Kuz_X(internal, in_key_2)
+	key := make([][]byte, 2)
+	key[0] = out_key_1
+	key[1] = out_key_2
+	return key
+}
+
+// функция расчета раундовых ключей
+func GOST_Kuz_Expand_Key(key_1 []byte, key_2 []byte) {
+	iter12 := make([][]byte, 2)
+	iter34 := make([][]byte, 2)
+	GOST_Kuz_Get_C()
+	iter_key[0] = key_1
+	iter_key[1] = key_2
+	iter12[0] = key_1
+	iter12[1] = key_2
+	for i := 0; i < 4; i++ {
+		iter34 = GOST_Kuz_F(iter12[0], iter12[1], iter_C[0+8*i])
+		iter12 = GOST_Kuz_F(iter34[0], iter34[1], iter_C[1+8*i])
+		iter34 = GOST_Kuz_F(iter12[0], iter12[1], iter_C[2+8*i])
+		iter12 = GOST_Kuz_F(iter34[0], iter34[1], iter_C[3+8*i])
+		iter34 = GOST_Kuz_F(iter12[0], iter12[1], iter_C[4+8*i])
+		iter12 = GOST_Kuz_F(iter34[0], iter34[1], iter_C[5+8*i])
+		iter34 = GOST_Kuz_F(iter12[0], iter12[1], iter_C[6+8*i])
+		iter12 = GOST_Kuz_F(iter34[0], iter34[1], iter_C[7+8*i])
+
+		iter_key[2*i+2] = iter12[0]
+		iter_key[2*i+3] = iter12[1]
+	}
+}
+
+// функция шифрования блока
+func GOST_Kuz_Encript(blk []byte) []byte {
+	out_blk := make([]byte, BLOCK_SIZE)
+	out_blk = blk
+	for i := 0; i < 9; i++ {
+		out_blk = GOST_Kuz_X(iter_key[i], out_blk)
+		out_blk = GOST_Kuz_S(out_blk)
+		out_blk = GOST_Kuz_L(out_blk)
+	}
+	out_blk = GOST_Kuz_X(out_blk, iter_key[9])
+	return out_blk
+}
+
+// функция расшифрования блока
+func GOST_Kuz_Decript(blk []byte) []byte {
+	out_blk := make([]byte, BLOCK_SIZE)
+	out_blk = blk
+
+	out_blk = GOST_Kuz_X(out_blk, iter_key[9])
+	for i := 8; i >= 0; i-- {
+		out_blk = GOST_Kuz_reverse_L(out_blk)
+		out_blk = GOST_Kuz_reverse_S(out_blk)
+		out_blk = GOST_Kuz_X(iter_key[i], out_blk)
+	}
+	return out_blk
+}
+
+func main() {
+	var text string
+
+	file, err := os.Open("input.txt")
+	if err != nil {
+		fmt.Println("Error Open File")
+		return
+	}
+	scanner := bufio.NewScanner(file)
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 1024*1024)
+	for scanner.Scan() {
+		text += scanner.Text()
+	}
+	text = hex.EncodeToString([]byte(text))
+	var hex_text string
+	if len(text)%32 != 0 {
+		for i := 0; i < 32-len(text)%32; i++ {
+			hex_text += "0"
+		}
+	}
+
+	hex_text += text
+	blocklen := len(hex_text) / 32
+	blocks := make([]string, blocklen)
+
+	for i := 0; i < blocklen; i++ {
+		blocks[i] = hex_text[i*32 : i*32+32]
+	}
+
+	key_str_1 := "7766554433221100ffeeddccbbaa9988"
+	key_str_2 := "efcdab89674523011032547698badcfe"
+	key_1, err := hex.DecodeString(key_str_1)
+	if err != nil {
+		fmt.Println("Ошибка декодирования первого ключа:", err)
+		return
+	}
+	key_2, err := hex.DecodeString(key_str_2)
+	if err != nil {
+		fmt.Println("Ошибка декодирования второго ключа:", err)
+		return
+	}
+
+	ident_const_key()
+
+	GOST_Kuz_Expand_Key(key_1, key_2)
+
+	encoded_blocks := make([][]byte, blocklen)
+	fmt.Println("Encoded Text")
+	for i := 0; i < blocklen; i++ {
+		encoded_blocks[i] = make([]byte, 16)
+		blk, err := hex.DecodeString(blocks[i])
+		if err != nil {
+			fmt.Println("Ошибка декодирования:", err)
+			return
+		}
+		encoded_blocks[i] = GOST_Kuz_Encript(blk)
+		fmt.Print(hex.EncodeToString(encoded_blocks[i]))
+	}
+	fmt.Print("\n")
+	decoded_blocks := make([][]byte, blocklen)
+	fmt.Println("Decoded Text")
+	var decoded_string string
+	for i := 0; i < blocklen; i++ {
+		decoded_blocks[i] = make([]byte, 16)
+		decoded_blocks[i] = GOST_Kuz_Decript(encoded_blocks[i])
+		decoded_string += hex.EncodeToString(decoded_blocks[i])
+	}
+	decoded_text, err := hex.DecodeString((decoded_string))
+	if err != nil {
+		fmt.Println("Ошибка при декодировании зашифрованного текста")
+	}
+	fmt.Println(string(decoded_text))
+}
